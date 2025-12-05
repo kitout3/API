@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Émargement Événements</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">📋 Émargement</div>
+    <div class="actions">
+      <button id="newEventBtn" class="primary">+ Nouvel événement</button>
+      <button id="resetDataBtn" class="ghost" title="Réinitialiser la démo">Réinitialiser</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <p class="eyebrow">Tableau de bord</p>
+          <h1>Mes événements</h1>
+        </div>
+        <div class="filters">
+          <input type="search" id="eventSearch" placeholder="Rechercher un événement" />
+          <input type="date" id="filterStart" />
+          <input type="date" id="filterEnd" />
+          <select id="statusFilter">
+            <option value="">Tous les statuts</option>
+            <option value="upcoming">À venir</option>
+            <option value="ongoing">En cours</option>
+            <option value="past">Terminé</option>
+          </select>
+        </div>
+      </div>
+      <div id="eventList" class="event-grid empty">
+        <div class="empty-state">
+          <p>Vous n'avez pas encore d'événement.</p>
+          <button class="primary" id="firstEventBtn">Créer mon premier événement</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="eventDetail" class="card hidden">
+      <div class="card-header">
+        <div>
+          <p class="eyebrow">Détail</p>
+          <h2 id="detailTitle">Événement</h2>
+          <p id="detailMeta" class="subtext"></p>
+        </div>
+        <div class="pill" id="detailStatus"></div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat">
+          <p class="label">Inscrits</p>
+          <h3 id="statRegistered">0</h3>
+        </div>
+        <div class="stat">
+          <p class="label">Présents</p>
+          <h3 id="statPresent">0</h3>
+        </div>
+        <div class="stat">
+          <p class="label">Taux de présence</p>
+          <h3 id="statPresenceRate">0%</h3>
+        </div>
+        <div class="stat">
+          <p class="label">Taux de remplissage</p>
+          <h3 id="statFillRate">0%</h3>
+        </div>
+        <div class="stat">
+          <p class="label">Ajouts sur place</p>
+          <h3 id="statOnSite">0</h3>
+        </div>
+        <div class="stat">
+          <p class="label">Dernière mise à jour</p>
+          <h3 id="statUpdated">-</h3>
+        </div>
+      </div>
+
+      <div class="detail-actions">
+        <div class="tabs">
+          <button data-tab="scan" class="tab active">Scanner</button>
+          <button data-tab="list" class="tab">Liste <span id="badgeCount" class="badge">0</span></button>
+          <button data-tab="export" class="tab">Exporter</button>
+        </div>
+        <div class="secondary-actions">
+          <label class="upload-btn">Importer Excel
+            <input type="file" id="detailImport" accept=".xlsx,.xls" />
+          </label>
+        </div>
+      </div>
+
+      <div id="tab-scan" class="tab-panel">
+        <div class="scan-card">
+          <div class="scan-preview" id="qr-reader"></div>
+          <div class="scan-result" id="scanResult">Positionnez le QR code devant la caméra</div>
+          <button id="startScanner" class="primary">Démarrer le scanner</button>
+          <button id="stopScanner" class="ghost">Arrêter</button>
+          <div class="small">Le QR code doit contenir uniquement l'ID client.</div>
+        </div>
+      </div>
+
+      <div id="tab-list" class="tab-panel hidden">
+        <div class="list-toolbar">
+          <input type="search" id="participantSearch" placeholder="Rechercher (nom, email, ID)" />
+          <select id="presenceFilter">
+            <option value="">Tous</option>
+            <option value="present">Présents</option>
+            <option value="absent">Absents</option>
+            <option value="onsite">Ajoutés sur place</option>
+          </select>
+        </div>
+
+        <div id="participantList" class="participants empty">
+          <p class="empty-state">Aucun participant pour le moment.</p>
+        </div>
+
+        <div class="add-form">
+          <h3>Ajouter un participant</h3>
+          <div class="form-grid">
+            <input type="text" id="addNom" placeholder="Nom *" required />
+            <input type="text" id="addPrenom" placeholder="Prénom *" required />
+            <input type="email" id="addEmail" placeholder="Email *" required />
+            <input type="text" id="addClientId" placeholder="ID client (optionnel)" />
+            <input type="text" id="addCompany" placeholder="Société (optionnel)" />
+            <input type="text" id="addTicket" placeholder="Type de billet (optionnel)" />
+          </div>
+          <div class="form-actions">
+            <button id="addAsPresent" class="primary">Ajouter et marquer présent</button>
+            <button id="addAsPending" class="ghost">Ajouter sans marquer présent</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-export" class="tab-panel hidden">
+        <div class="export-grid">
+          <div class="export-card">
+            <h4>Exporter</h4>
+            <select id="exportFilter">
+              <option value="all">Tous les inscrits</option>
+              <option value="present">Uniquement les présents</option>
+              <option value="absent">Uniquement les absents</option>
+              <option value="onsite">Inscrits sur place</option>
+            </select>
+            <button id="exportBtn" class="primary">Exporter en Excel</button>
+          </div>
+          <div class="export-card">
+            <h4>Récapitulatif import</h4>
+            <p id="importSummary">Importez un fichier Excel pour voir les statistiques de doublons et d'ajouts.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Créer un événement</h3>
+        <button id="closeModal" aria-label="Fermer">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <input type="text" id="eventName" placeholder="Nom de l'événement *" required />
+          <input type="datetime-local" id="eventDate" placeholder="Date de l'événement *" required />
+          <input type="number" id="eventCapacity" placeholder="Capacité maximale (optionnel)" min="0" />
+          <input type="text" id="eventLocation" placeholder="Lieu (optionnel)" />
+          <textarea id="eventDescription" placeholder="Description (optionnel)"></textarea>
+        </div>
+        <div class="dropzone" id="modalDropzone">
+          <p>Importez vos inscrits (colonnes : id_client, nom, prenom, email)</p>
+          <label class="upload-btn">Choisir un fichier Excel
+            <input type="file" id="modalImport" accept=".xlsx,.xls" />
+          </label>
+        </div>
+        <div class="small" id="modalImportSummary"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="saveEvent" class="primary">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

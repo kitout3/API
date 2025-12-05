@@ -85,6 +85,7 @@ function renderEvents() {
     card.className = 'event-card';
     const status = statusFromDate(evt.date);
     card.innerHTML = `
+      <div class="event-meta">${formatDate(evt.date)}</div>
       <div class="event-meta">${formatDate(evt.date)} ${evt.location ? '• ' + evt.location : ''}</div>
       <h3>${evt.name}</h3>
       <p class="event-meta">${evt.participants.length} inscrits${evt.capacity ? ' • Capacité ' + evt.capacity : ''}</p>
@@ -104,6 +105,7 @@ function selectEvent(id) {
   if (!evt) return;
   document.getElementById('eventDetail').classList.remove('hidden');
   document.getElementById('detailTitle').textContent = evt.name;
+document.getElementById('detailMeta').textContent = `${formatDate(evt.date)}`;
   document.getElementById('detailMeta').textContent = `${formatDate(evt.date)}${evt.location ? ' • ' + evt.location : ''}`;
   document.getElementById('detailStatus').textContent = statusFromDate(evt.date);
   updateStats();
@@ -118,6 +120,8 @@ function updateStats() {
   const present = evt.participants.filter((p) => p.presence === 'present').length;
   const onsite = evt.participants.filter((p) => p.onsite).length;
   const presenceRate = total ? Math.round((present / total) * 100) : 0;
+  const capacityValue = evt.capacity ? Number(evt.capacity) : 0;
+  const fillRate = capacityValue ? Math.round((present / capacityValue) * 100) : 0;
   const fillRate = evt.capacity ? Math.round((present / evt.capacity) * 100) : 0;
 
   document.getElementById('statRegistered').textContent = total;
@@ -231,15 +235,57 @@ function parseExcel(file, callback) {
     const wb = XLSX.read(data, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws);
+    const normalizedHeaders = Object.keys(rows[0] || {}).map(normalizeHeader);
+    const required = ['id dinscription', 'contact', 'adresse email (contact) (relation)'];
+    const missing = required.filter((key) => !normalizedHeaders.includes(key));
     const required = ['id_client', 'nom', 'email'];
     const missing = required.filter((key) => !Object.keys(rows[0] || {}).includes(key));
     if (missing.length) {
       alert('Colonnes manquantes : ' + missing.join(', '));
       return;
     }
+    const mapped = rows.map(mapExternalRow);
+    callback(mapped);
     callback(rows);
   };
   reader.readAsArrayBuffer(file);
+}
+
+function normalizeHeader(key) {
+  return (key || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[’']/g, "'")
+    .replace(/\s+/g, ' ');
+}
+
+function mapExternalRow(raw) {
+  const record = { contact: '', email: '', id_client: '', role: '', evenement: '' };
+  Object.entries(raw || {}).forEach(([key, value]) => {
+    const normalized = normalizeHeader(key);
+    if (normalized === "id d'inscription" || normalized === 'id dinscription') record.id_client = String(value || '').trim();
+    if (normalized === 'contact') record.contact = String(value || '').trim();
+    if (normalized === 'rôle principal') record.role = String(value || '').trim();
+    if (normalized === "adresse email (contact) (relation)") record.email = String(value || '').trim();
+    if (normalized === 'événement') record.evenement = String(value || '').trim();
+  });
+
+  const parts = record.contact.split(' ').filter(Boolean);
+  const nom = parts.length ? parts.pop() : record.contact;
+  const prenom = parts.join(' ');
+
+  return {
+    id_client: record.id_client,
+    nom: nom || 'Inconnu',
+    prenom,
+    email: record.email,
+    role: record.role,
+    evenement: record.evenement,
+    source: 'import',
+    onsite: false,
+    presence: 'absent',
+  };
 }
 
 function importParticipants(rows, targetEventId) {
@@ -259,6 +305,9 @@ function importParticipants(rows, targetEventId) {
   lastImportSummary = `${imported} ajoutés • ${duplicates} doublons ignorés`;
   document.getElementById('importSummary').textContent = lastImportSummary;
   document.getElementById('modalImportSummary').textContent = lastImportSummary;
+  if (!evt.capacity) {
+    evt.capacity = evt.participants.length;
+  }
 }
 
 function switchTab(tab) {
@@ -358,10 +407,13 @@ document.getElementById('saveEvent').addEventListener('click', () => {
     alert('Le nom et la date sont obligatoires');
     return;
   }
+  const capacityInput = document.getElementById('eventCapacity').value;
   const evt = {
     id: uid(),
     name,
     date,
+    capacity: capacityInput ? Number(capacityInput) : null,
+    description: '',
     capacity: document.getElementById('eventCapacity').value,
     location: document.getElementById('eventLocation').value,
     description: document.getElementById('eventDescription').value,
@@ -369,6 +421,9 @@ document.getElementById('saveEvent').addEventListener('click', () => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  if (!evt.capacity && modalImportCache.length) {
+    evt.capacity = modalImportCache.length;
+  }
   events.push(evt);
   saveEvents();
   renderEvents();
@@ -392,6 +447,9 @@ document.querySelectorAll('.tab').forEach((btn) => {
         modalImportCache = rows;
         lastImportSummary = `${rows.length} lignes prêtes à être importées`;
         document.getElementById('modalImportSummary').textContent = lastImportSummary;
+        if (!document.getElementById('eventCapacity').value) {
+          document.getElementById('eventCapacity').value = rows.length;
+        }
       } else if (currentEventId) {
         importParticipants(rows, currentEventId);
         updateStats();

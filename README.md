@@ -3,6 +3,8 @@
 Application front-end seule pour créer et gérer des événements d'émargement directement dans le navigateur (compatible GitHub Pages). Toutes les données sont stockées dans `localStorage`.
 
 ## Fonctionnalités principales
+- Création et édition d'événements avec capacité.
+- Import Excel (XLS/XLSX) des inscrits au format CRM attendu (`ID d’inscription`, `Contact`, `Adresse email (Contact) (Relation)`) avec gestion des doublons.
 - Création et édition d'événements avec capacité, lieu et description.
 - Import Excel (XLS/XLSX) des inscrits avec vérification des colonnes obligatoires `id_client`, `nom`, `email` et gestion des doublons.
 - Liste d'événements filtrable (nom, dates, statut à venir/en cours/terminé).
@@ -13,6 +15,8 @@ Application front-end seule pour créer et gérer des événements d'émargement
 
 ## Démarrage
 1. Ouvrir `index.html` dans un navigateur moderne (desktop ou mobile). Aucun backend n'est requis.
+2. Créer un événement depuis le bouton « Nouvel événement » (la fenêtre ne s'affiche plus automatiquement ailleurs).
+3. Importer un fichier Excel (colonnes `ID d’inscription`, `Contact`, `Adresse email (Contact) (Relation)` obligatoires). La capacité est renseignée automatiquement selon le nombre de lignes importées si aucun maximum n'est saisi.
 2. Créer un événement depuis le bouton « Nouvel événement ».
 3. Importer un fichier Excel (colonnes `id_client`, `nom`, `email` obligatoires) au moment de la création ou depuis l'onglet « Scanner/Liste/Exporter » de l'événement.
 4. Ajouter des participants manuellement ou marquer leur présence via la liste ou le scanner QR.

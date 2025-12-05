@@ -21,7 +21,7 @@
   </header>
 
   <main class="container">
-    <section class="card">
+<section class="card">
       <div class="card-header">
         <div>
           <p class="eyebrow">Tableau de bord</p>
@@ -43,6 +43,7 @@
         <div class="empty-state">
           <p>Vous n'avez pas encore d'événement.</p>
           <p class="subtext">Cliquez sur « Nouvel événement » pour commencer.</p>
+          <button class="primary" id="firstEventBtn">Créer mon premier événement</button>
         </div>
       </div>
     </section>
@@ -171,9 +172,11 @@
           <input type="text" id="eventName" placeholder="Nom de l'événement *" required />
           <input type="datetime-local" id="eventDate" placeholder="Date de l'événement *" required />
           <input type="number" id="eventCapacity" placeholder="Capacité maximale (optionnel)" min="0" />
+          <input type="text" id="eventLocation" placeholder="Lieu (optionnel)" />
+          <textarea id="eventDescription" placeholder="Description (optionnel)"></textarea>
         </div>
         <div class="dropzone" id="modalDropzone">
-          <p>Importez vos inscrits (colonnes : ID d’inscription, Contact, Adresse email)</p>
+          <p>Importez vos inscrits (colonnes : id_client, nom, prenom, email)</p>
           <label class="upload-btn">Choisir un fichier Excel
             <input type="file" id="modalImport" accept=".xlsx,.xls" />
           </label>

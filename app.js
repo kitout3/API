@@ -50,6 +50,8 @@ function closeModal() {
   document.getElementById('eventName').value = '';
   document.getElementById('eventDate').value = '';
   document.getElementById('eventCapacity').value = '';
+  document.getElementById('eventLocation').value = '';
+  document.getElementById('eventDescription').value = '';
   document.getElementById('modalImport').value = '';
   modalImportCache = [];
 }
@@ -84,6 +86,7 @@ function renderEvents() {
     const status = statusFromDate(evt.date);
     card.innerHTML = `
       <div class="event-meta">${formatDate(evt.date)}</div>
+      <div class="event-meta">${formatDate(evt.date)} ${evt.location ? '• ' + evt.location : ''}</div>
       <h3>${evt.name}</h3>
       <p class="event-meta">${evt.participants.length} inscrits${evt.capacity ? ' • Capacité ' + evt.capacity : ''}</p>
       <div class="event-actions">
@@ -102,7 +105,8 @@ function selectEvent(id) {
   if (!evt) return;
   document.getElementById('eventDetail').classList.remove('hidden');
   document.getElementById('detailTitle').textContent = evt.name;
-  document.getElementById('detailMeta').textContent = `${formatDate(evt.date)}`;
+document.getElementById('detailMeta').textContent = `${formatDate(evt.date)}`;
+  document.getElementById('detailMeta').textContent = `${formatDate(evt.date)}${evt.location ? ' • ' + evt.location : ''}`;
   document.getElementById('detailStatus').textContent = statusFromDate(evt.date);
   updateStats();
   renderParticipants();
@@ -118,6 +122,7 @@ function updateStats() {
   const presenceRate = total ? Math.round((present / total) * 100) : 0;
   const capacityValue = evt.capacity ? Number(evt.capacity) : 0;
   const fillRate = capacityValue ? Math.round((present / capacityValue) * 100) : 0;
+  const fillRate = evt.capacity ? Math.round((present / evt.capacity) * 100) : 0;
 
   document.getElementById('statRegistered').textContent = total;
   document.getElementById('statPresent').textContent = present;
@@ -233,12 +238,15 @@ function parseExcel(file, callback) {
     const normalizedHeaders = Object.keys(rows[0] || {}).map(normalizeHeader);
     const required = ['id dinscription', 'contact', 'adresse email (contact) (relation)'];
     const missing = required.filter((key) => !normalizedHeaders.includes(key));
+    const required = ['id_client', 'nom', 'email'];
+    const missing = required.filter((key) => !Object.keys(rows[0] || {}).includes(key));
     if (missing.length) {
       alert('Colonnes manquantes : ' + missing.join(', '));
       return;
     }
     const mapped = rows.map(mapExternalRow);
     callback(mapped);
+    callback(rows);
   };
   reader.readAsArrayBuffer(file);
 }
@@ -380,6 +388,7 @@ function resetDemo() {
 // Event listeners
 
 document.getElementById('newEventBtn').addEventListener('click', openModal);
+document.getElementById('firstEventBtn').addEventListener('click', openModal);
 document.getElementById('closeModal').addEventListener('click', closeModal);
 document.getElementById('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
 
@@ -405,6 +414,9 @@ document.getElementById('saveEvent').addEventListener('click', () => {
     date,
     capacity: capacityInput ? Number(capacityInput) : null,
     description: '',
+    capacity: document.getElementById('eventCapacity').value,
+    location: document.getElementById('eventLocation').value,
+    description: document.getElementById('eventDescription').value,
     participants: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

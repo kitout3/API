@@ -1,3 +1,12 @@
+const storageKey = 'emargement-events-v2';
+let events = loadEvents();
+let currentEventId = null;
+let modalImportCache = [];
+let lastImportSummary = 'Chargez un fichier pour voir les résultats.';
+let scanner = null;
+
+function uid() { return crypto.randomUUID(); }
+function nowISO() { return new Date().toISOString(); }
 const storageKey = 'emargement-events';
 let events = loadEvents();
 let currentEventId = null;
@@ -14,11 +23,13 @@ function loadEvents() {
     const raw = localStorage.getItem(storageKey);
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
+    console.warn('Stockage illisible, réinitialisation.', e);
     console.error('Impossible de charger le stockage', e);
     return [];
   }
 }
 
+function saveEvents() { localStorage.setItem(storageKey, JSON.stringify(events)); }
 function saveEvents() {
   localStorage.setItem(storageKey, JSON.stringify(events));
 }
@@ -47,6 +58,15 @@ function openModal() {
 function closeModal() {
   document.getElementById('modal').classList.add('hidden');
   document.body.style.overflow = 'auto';
+  ['eventName', 'eventDate', 'eventCapacity'].forEach((id) => document.getElementById(id).value = '');
+  document.getElementById('modalImport').value = '';
+  document.getElementById('modalImportSummary').textContent = '';
+  modalImportCache = [];
+}
+
+function renderEventList() {
+  const list = document.getElementById('eventList');
+  const q = document.getElementById('eventSearch').value.toLowerCase();
   document.getElementById('eventName').value = '';
   document.getElementById('eventDate').value = '';
   document.getElementById('eventCapacity').value = '';
@@ -64,6 +84,7 @@ function renderEvents() {
   const status = document.getElementById('statusFilter').value;
 
   const filtered = events.filter((evt) => {
+    const matchesSearch = evt.name.toLowerCase().includes(q);
     const matchesSearch = evt.name.toLowerCase().includes(search);
     const evtDate = evt.date ? new Date(evt.date) : null;
     const matchesStart = start ? evtDate >= new Date(start) : true;
@@ -72,6 +93,13 @@ function renderEvents() {
     return matchesSearch && matchesStart && matchesEnd && matchesStatus;
   });
 
+  list.innerHTML = '';
+  if (!filtered.length) {
+    list.classList.add('empty');
+    list.innerHTML = '<div class="empty-state"><p>Aucun événement ne correspond.</p></div>';
+    return;
+  }
+  list.classList.remove('empty');
   container.innerHTML = '';
   if (!filtered.length) {
     container.classList.add('empty');
@@ -83,6 +111,12 @@ function renderEvents() {
   filtered.forEach((evt) => {
     const card = document.createElement('div');
     card.className = 'event-card';
+    card.innerHTML = `
+      <div class="meta">${formatDate(evt.date) || 'Date à préciser'}</div>
+      <h3>${evt.name}</h3>
+      <div class="meta">${evt.participants.length} inscrits • capacité ${evt.capacity || '—'}</div>
+      <div class="event-actions">
+        <span class="pill">${statusFromDate(evt.date)}</span>
     const status = statusFromDate(evt.date);
     card.innerHTML = `
       <div class="event-meta">${formatDate(evt.date)}</div>
@@ -95,6 +129,7 @@ function renderEvents() {
       </div>
     `;
     card.querySelector('button').addEventListener('click', () => selectEvent(evt.id));
+    list.appendChild(card);
     container.appendChild(card);
   });
 }
@@ -105,6 +140,7 @@ function selectEvent(id) {
   if (!evt) return;
   document.getElementById('eventDetail').classList.remove('hidden');
   document.getElementById('detailTitle').textContent = evt.name;
+  document.getElementById('detailMeta').textContent = formatDate(evt.date) || 'Date à préciser';
 document.getElementById('detailMeta').textContent = `${formatDate(evt.date)}`;
   document.getElementById('detailMeta').textContent = `${formatDate(evt.date)}${evt.location ? ' • ' + evt.location : ''}`;
   document.getElementById('detailStatus').textContent = statusFromDate(evt.date);
@@ -120,6 +156,14 @@ function updateStats() {
   const present = evt.participants.filter((p) => p.presence === 'present').length;
   const onsite = evt.participants.filter((p) => p.onsite).length;
   const presenceRate = total ? Math.round((present / total) * 100) : 0;
+  const capacityValue = evt.capacity || 0;
+  const fillRate = capacityValue ? Math.round((present / capacityValue) * 100) : 0;
+
+  document.getElementById('statRegistered').textContent = total;
+  document.getElementById('statPresent').textContent = present;
+  document.getElementById('statPresenceRate').textContent = `${presenceRate}%`;
+  document.getElementById('statFillRate').textContent = `${fillRate}%`;
+  document.getElementById('statCapacity').textContent = evt.capacity || '—';
   const capacityValue = evt.capacity ? Number(evt.capacity) : 0;
   const fillRate = capacityValue ? Math.round((present / capacityValue) * 100) : 0;
   const fillRate = evt.capacity ? Math.round((present / evt.capacity) * 100) : 0;
@@ -137,6 +181,12 @@ function renderParticipants() {
   const evt = events.find((e) => e.id === currentEventId);
   if (!evt) return;
   const container = document.getElementById('participantList');
+  const q = document.getElementById('participantSearch').value.toLowerCase();
+  const filter = document.getElementById('presenceFilter').value;
+
+  const filtered = evt.participants.filter((p) => {
+    const matchesSearch = `${p.nom} ${p.prenom} ${p.email} ${p.id_client}`.toLowerCase().includes(q);
+    const matchesPresence = filter === 'present' ? p.presence === 'present'
   const search = document.getElementById('participantSearch').value.toLowerCase();
   const filter = document.getElementById('presenceFilter').value;
 
@@ -161,6 +211,23 @@ function renderParticipants() {
   filtered.forEach((p) => {
     const row = document.createElement('div');
     row.className = 'participant';
+    row.innerHTML = `
+      <div>
+        <strong>${p.nom.toUpperCase()} ${p.prenom}</strong>
+        <div class="meta">${p.email} • ID ${p.id_client}</div>
+        <div class="meta">${p.role ? p.role + ' • ' : ''}${p.source} ${p.mode ? '• ' + p.mode : ''}${p.presenceDate ? ' • ' + formatDate(p.presenceDate) : ''}</div>
+        <div class="badges">
+          <span class="${p.presence === 'present' ? 'present' : 'absent'}">${p.presence === 'present' ? 'Présent' : 'Non émargé'}</span>
+          ${p.onsite ? '<span class="onsite">Sur place</span>' : ''}
+        </div>
+      </div>
+      <div class="participant-actions">
+        ${p.presence === 'present'
+          ? '<button class="ghost">Annuler</button>'
+          : '<button class="primary">Marquer présent</button>'}
+      </div>
+    `;
+    row.querySelector('button').addEventListener('click', () => updatePresence(p.id_client, p.presence !== 'present', 'manual'));
     const presenceBadge = p.presence === 'present' ? '<span class="present">Présent</span>' : '<span class="absent">Non émargé</span>';
     const onsiteBadge = p.onsite ? '<span class="onsite">Sur place</span>' : '';
     row.innerHTML = `
@@ -185,11 +252,16 @@ function renderParticipants() {
   });
 }
 
+function updatePresence(idClient, markPresent, mode) {
 function updatePresence(idClient, present, mode) {
   const evt = events.find((e) => e.id === currentEventId);
   if (!evt) return;
   const participant = evt.participants.find((p) => p.id_client === idClient);
   if (!participant) return;
+  participant.presence = markPresent ? 'present' : 'absent';
+  participant.presenceDate = markPresent ? nowISO() : null;
+  participant.mode = markPresent ? mode : null;
+  evt.updatedAt = nowISO();
   participant.presence = present ? 'present' : 'absent';
   participant.mode = mode;
   participant.presenceDate = present ? new Date().toISOString() : null;
@@ -201,6 +273,12 @@ function updatePresence(idClient, present, mode) {
 
 function addParticipant(data, markPresent) {
   const evt = events.find((e) => e.id === currentEventId);
+  if (!evt) return { added: false, reason: 'Sélectionnez un événement.' };
+  const idClient = data.id_client || uid();
+  if (evt.participants.some((p) => p.id_client === idClient)) {
+    return { added: false, reason: 'ID client déjà présent.' };
+  }
+  evt.participants.push({
   if (!evt) return { added: false, reason: 'Aucun événement sélectionné' };
   const idClient = data.id_client || uid();
   if (evt.participants.some((p) => p.id_client === idClient)) {
@@ -211,6 +289,15 @@ function addParticipant(data, markPresent) {
     nom: data.nom || 'Inconnu',
     prenom: data.prenom || '',
     email: data.email || '',
+    role: data.role || '',
+    source: data.source || 'manual',
+    onsite: data.onsite || false,
+    presence: markPresent ? 'present' : 'absent',
+    presenceDate: markPresent ? nowISO() : null,
+    mode: markPresent ? data.mode || 'manual' : null,
+    createdAt: nowISO(),
+  });
+  evt.updatedAt = nowISO();
     company: data.company || data.societe || '',
     ticket: data.ticket || data.type_de_billet || '',
     source: data.source || 'manual',
@@ -261,6 +348,19 @@ function normalizeHeader(key) {
 }
 
 function mapExternalRow(raw) {
+  const normalized = {};
+  Object.entries(raw || {}).forEach(([k, v]) => normalized[normalizeHeader(k)] = v);
+  const record = {
+    id_client: String(normalized["id d'inscription"] || normalized['id dinscription'] || '').trim(),
+    contact: String(normalized['contact'] || '').trim(),
+    email: String(normalized["adresse email (contact) (relation)"] || '').trim(),
+    role: String(normalized['rôle principal'] || '').trim(),
+    evenement: String(normalized['événement'] || '').trim(),
+    statut: String(normalized["statut (contact) (relation)"] || '').trim(),
+  };
+  const parts = record.contact.split(' ').filter(Boolean);
+  const nom = parts.length ? parts.pop() : record.contact;
+  const prenom = parts.join(' ');
   const record = { contact: '', email: '', id_client: '', role: '', evenement: '' };
   Object.entries(raw || {}).forEach(([key, value]) => {
     const normalized = normalizeHeader(key);
@@ -281,6 +381,35 @@ function mapExternalRow(raw) {
     prenom,
     email: record.email,
     role: record.role,
+    source: 'import',
+    onsite: false,
+    presence: 'absent',
+    meta: { evenement: record.evenement, statut: record.statut },
+  };
+}
+
+function parseExcel(file, callback) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const data = new Uint8Array(e.target.result);
+    const wb = XLSX.read(data, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws);
+    const normalizedHeaders = Object.keys(rows[0] || {}).map(normalizeHeader);
+    const required = ["id d'inscription", 'id dinscription', 'contact', "adresse email (contact) (relation)"];
+    const hasId = normalizedHeaders.includes("id d'inscription") || normalizedHeaders.includes('id dinscription');
+    const hasContact = normalizedHeaders.includes('contact');
+    const hasEmail = normalizedHeaders.includes("adresse email (contact) (relation)");
+    if (!(hasId && hasContact && hasEmail)) {
+      alert('Colonnes obligatoires manquantes : ID d\'inscription, Contact, Adresse email (Contact) (Relation)');
+      return;
+    }
+    const mapped = rows.map(mapExternalRow).filter((r) => r.id_client);
+    callback(mapped);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
     evenement: record.evenement,
     source: 'import',
     onsite: false,
@@ -295,6 +424,9 @@ function importParticipants(rows, targetEventId) {
   let duplicates = 0;
   rows.forEach((row) => {
     const exists = evt.participants.some((p) => p.id_client === row.id_client);
+    if (exists) { duplicates += 1; return; }
+    const result = addParticipant({ ...row, source: 'import' }, false);
+    if (result.added) imported += 1;
     if (exists) {
       duplicates += 1;
       return;
@@ -305,6 +437,13 @@ function importParticipants(rows, targetEventId) {
   lastImportSummary = `${imported} ajoutés • ${duplicates} doublons ignorés`;
   document.getElementById('importSummary').textContent = lastImportSummary;
   document.getElementById('modalImportSummary').textContent = lastImportSummary;
+  if (!evt.capacity && evt.participants.length) {
+    evt.capacity = evt.participants.length;
+  }
+  evt.updatedAt = nowISO();
+  saveEvents();
+  updateStats();
+  renderParticipants();
   if (!evt.capacity) {
     evt.capacity = evt.participants.length;
   }
@@ -319,6 +458,10 @@ function switchTab(tab) {
 
 function startScanner() {
   if (!currentEventId) return alert('Sélectionnez un événement.');
+  const container = document.getElementById('qr-reader');
+  container.innerHTML = '';
+  scanner = new Html5Qrcode('qr-reader');
+  scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 250 }, (decoded) => handleScan(decoded.trim()), () => {});
   const reader = document.getElementById('qr-reader');
   reader.innerHTML = '';
   html5Qr = new Html5Qrcode('qr-reader');
@@ -329,6 +472,10 @@ function startScanner() {
 }
 
 function stopScanner() {
+  if (scanner) {
+    scanner.stop().then(() => scanner.clear());
+    document.getElementById('scanResult').textContent = 'Scanner arrêté.';
+  }
   if (html5Qr) {
     html5Qr.stop().then(() => html5Qr.clear());
   }
@@ -359,6 +506,16 @@ function exportExcel(filter) {
   if (filter === 'absent') rows = rows.filter((p) => p.presence !== 'present');
   if (filter === 'onsite') rows = rows.filter((p) => p.onsite);
   const data = rows.map((p) => ({
+    "ID d'inscription": p.id_client,
+    Nom: p.nom,
+    Prénom: p.prenom,
+    Email: p.email,
+    Rôle: p.role || '',
+    Statut: p.presence,
+    "Date/heure": p.presenceDate ? formatDate(p.presenceDate) : '',
+    Mode: p.mode || '',
+    Source: p.source,
+    "Ajout sur place": p.onsite ? 'oui' : 'non',
     id_client: p.id_client,
     nom: p.nom,
     prenom: p.prenom,
@@ -380,12 +537,15 @@ function resetDemo() {
     localStorage.removeItem(storageKey);
     events = [];
     currentEventId = null;
+    document.getElementById('eventDetail').classList.add('hidden');
+    renderEventList();
     renderEvents();
     document.getElementById('eventDetail').classList.add('hidden');
   }
 }
 
 // Event listeners
+document.getElementById('newEventBtn').addEventListener('click', openModal);
 
 document.getElementById('newEventBtn').addEventListener('click', openModal);
 document.getElementById('firstEventBtn').addEventListener('click', openModal);
@@ -393,6 +553,10 @@ document.getElementById('closeModal').addEventListener('click', closeModal);
 document.getElementById('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
 
 ['eventSearch', 'filterStart', 'filterEnd', 'statusFilter'].forEach((id) => {
+  document.getElementById(id).addEventListener('input', renderEventList);
+});
+
+['participantSearch', 'presenceFilter'].forEach((id) => document.getElementById(id).addEventListener('input', renderParticipants));
   document.getElementById(id).addEventListener('input', renderEvents);
 });
 
@@ -403,6 +567,8 @@ document.getElementById('modal').addEventListener('click', (e) => { if (e.target
 document.getElementById('saveEvent').addEventListener('click', () => {
   const name = document.getElementById('eventName').value.trim();
   const date = document.getElementById('eventDate').value;
+  if (!name) return alert('Le nom de l\'événement est obligatoire');
+  const capacityValue = document.getElementById('eventCapacity').value;
   if (!name || !date) {
     alert('Le nom et la date sont obligatoires');
     return;
@@ -412,6 +578,21 @@ document.getElementById('saveEvent').addEventListener('click', () => {
     id: uid(),
     name,
     date,
+    capacity: capacityValue ? Number(capacityValue) : null,
+    participants: [],
+    createdAt: nowISO(),
+    updatedAt: nowISO(),
+  };
+  if (!evt.capacity && modalImportCache.length) evt.capacity = modalImportCache.length;
+  events.push(evt);
+  saveEvents();
+  renderEventList();
+  closeModal();
+  selectEvent(evt.id);
+  if (modalImportCache.length) importParticipants(modalImportCache, evt.id);
+});
+
+document.querySelectorAll('.tab').forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
     capacity: capacityInput ? Number(capacityInput) : null,
     description: '',
     capacity: document.getElementById('eventCapacity').value,
@@ -447,6 +628,9 @@ document.querySelectorAll('.tab').forEach((btn) => {
         modalImportCache = rows;
         lastImportSummary = `${rows.length} lignes prêtes à être importées`;
         document.getElementById('modalImportSummary').textContent = lastImportSummary;
+        if (!document.getElementById('eventCapacity').value) document.getElementById('eventCapacity').value = rows.length;
+      } else if (currentEventId) {
+        importParticipants(rows, currentEventId);
         if (!document.getElementById('eventCapacity').value) {
           document.getElementById('eventCapacity').value = rows.length;
         }
@@ -470,6 +654,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
       prenom,
       email,
       id_client: document.getElementById('addClientId').value.trim(),
+      role: document.getElementById('addRole').value.trim(),
       company: document.getElementById('addCompany').value.trim(),
       ticket: document.getElementById('addTicket').value.trim(),
       onsite: true,
@@ -478,6 +663,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
     const mark = id === 'addAsPresent';
     const result = addParticipant(data, mark);
     if (!result.added) alert(result.reason);
+    ['addClientId', 'addRole'].forEach((f) => document.getElementById(f).value = '');
     document.getElementById('addClientId').value = '';
     document.getElementById('addCompany').value = '';
     document.getElementById('addTicket').value = '';
@@ -489,4 +675,5 @@ document.getElementById('stopScanner').addEventListener('click', stopScanner);
 document.getElementById('exportBtn').addEventListener('click', () => exportExcel(document.getElementById('exportFilter').value));
 document.getElementById('resetDataBtn').addEventListener('click', resetDemo);
 
+renderEventList();
 renderEvents();

@@ -1,0 +1,451 @@
+const storageKey = 'emargement-events-v2';
+let events = loadEvents();
+let currentEventId = null;
+let modalImportCache = [];
+let lastImportSummary = 'Chargez un fichier pour voir les résultats.';
+let scanner = null;
+
+function uid() { return crypto.randomUUID(); }
+function nowISO() { return new Date().toISOString(); }
+
+function loadEvents() {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.warn('Stockage illisible, réinitialisation.', e);
+    return [];
+  }
+}
+
+function saveEvents() { localStorage.setItem(storageKey, JSON.stringify(events)); }
+
+function statusFromDate(dateString) {
+  if (!dateString) return 'upcoming';
+  const target = new Date(dateString);
+  const today = new Date();
+  if (target.toDateString() === today.toDateString()) return 'ongoing';
+  if (target > today) return 'upcoming';
+  return 'past';
+}
+
+function formatDate(dateString) {
+  if (!dateString) return '';
+  return new Date(dateString).toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' });
+}
+
+function openModal() {
+  document.getElementById('modal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('modalImportSummary').textContent = '';
+  modalImportCache = [];
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.add('hidden');
+  document.body.style.overflow = 'auto';
+  ['eventName', 'eventDate', 'eventCapacity'].forEach((id) => document.getElementById(id).value = '');
+  document.getElementById('modalImport').value = '';
+  document.getElementById('modalImportSummary').textContent = '';
+  modalImportCache = [];
+}
+
+function renderEventList() {
+  const list = document.getElementById('eventList');
+  const q = document.getElementById('eventSearch').value.toLowerCase();
+  const start = document.getElementById('filterStart').value;
+  const end = document.getElementById('filterEnd').value;
+  const status = document.getElementById('statusFilter').value;
+
+  const filtered = events.filter((evt) => {
+    const matchesSearch = evt.name.toLowerCase().includes(q);
+    const evtDate = evt.date ? new Date(evt.date) : null;
+    const matchesStart = start ? evtDate >= new Date(start) : true;
+    const matchesEnd = end ? evtDate <= new Date(`${end}T23:59:59`) : true;
+    const matchesStatus = status ? statusFromDate(evt.date) === status : true;
+    return matchesSearch && matchesStart && matchesEnd && matchesStatus;
+  });
+
+  list.innerHTML = '';
+  if (!filtered.length) {
+    list.classList.add('empty');
+    list.innerHTML = '<div class="empty-state"><p>Aucun événement ne correspond.</p></div>';
+    return;
+  }
+  list.classList.remove('empty');
+
+  filtered.forEach((evt) => {
+    const card = document.createElement('div');
+    card.className = 'event-card';
+    card.innerHTML = `
+      <div class="meta">${formatDate(evt.date) || 'Date à préciser'}</div>
+      <h3>${evt.name}</h3>
+      <div class="meta">${evt.participants.length} inscrits • capacité ${evt.capacity || '—'}</div>
+      <div class="event-actions">
+        <span class="pill">${statusFromDate(evt.date)}</span>
+        <button class="primary" data-id="${evt.id}">Gérer</button>
+      </div>
+    `;
+    card.querySelector('button').addEventListener('click', () => selectEvent(evt.id));
+    list.appendChild(card);
+  });
+}
+
+function selectEvent(id) {
+  currentEventId = id;
+  const evt = events.find((e) => e.id === id);
+  if (!evt) return;
+  document.getElementById('eventDetail').classList.remove('hidden');
+  document.getElementById('detailTitle').textContent = evt.name;
+  document.getElementById('detailMeta').textContent = formatDate(evt.date) || 'Date à préciser';
+  document.getElementById('detailStatus').textContent = statusFromDate(evt.date);
+  updateStats();
+  renderParticipants();
+  switchTab('scan');
+}
+
+function updateStats() {
+  const evt = events.find((e) => e.id === currentEventId);
+  if (!evt) return;
+  const total = evt.participants.length;
+  const present = evt.participants.filter((p) => p.presence === 'present').length;
+  const onsite = evt.participants.filter((p) => p.onsite).length;
+  const presenceRate = total ? Math.round((present / total) * 100) : 0;
+  const capacityValue = evt.capacity || 0;
+  const fillRate = capacityValue ? Math.round((present / capacityValue) * 100) : 0;
+
+  document.getElementById('statRegistered').textContent = total;
+  document.getElementById('statPresent').textContent = present;
+  document.getElementById('statPresenceRate').textContent = `${presenceRate}%`;
+  document.getElementById('statFillRate').textContent = `${fillRate}%`;
+  document.getElementById('statCapacity').textContent = evt.capacity || '—';
+  document.getElementById('statOnSite').textContent = onsite;
+  document.getElementById('statUpdated').textContent = evt.updatedAt ? formatDate(evt.updatedAt) : '-';
+  document.getElementById('badgeCount').textContent = total;
+}
+
+function renderParticipants() {
+  const evt = events.find((e) => e.id === currentEventId);
+  if (!evt) return;
+  const container = document.getElementById('participantList');
+  const q = document.getElementById('participantSearch').value.toLowerCase();
+  const filter = document.getElementById('presenceFilter').value;
+
+  const filtered = evt.participants.filter((p) => {
+    const matchesSearch = `${p.nom} ${p.prenom} ${p.email} ${p.id_client}`.toLowerCase().includes(q);
+    const matchesPresence = filter === 'present' ? p.presence === 'present'
+      : filter === 'absent' ? p.presence !== 'present'
+      : filter === 'onsite' ? p.onsite
+      : true;
+    return matchesSearch && matchesPresence;
+  });
+
+  container.innerHTML = '';
+  if (!filtered.length) {
+    container.classList.add('empty');
+    container.innerHTML = '<p class="empty-state">Aucun participant.</p>';
+    return;
+  }
+  container.classList.remove('empty');
+
+  filtered.forEach((p) => {
+    const row = document.createElement('div');
+    row.className = 'participant';
+    row.innerHTML = `
+      <div>
+        <strong>${p.nom.toUpperCase()} ${p.prenom}</strong>
+        <div class="meta">${p.email} • ID ${p.id_client}</div>
+        <div class="meta">${p.role ? p.role + ' • ' : ''}${p.source} ${p.mode ? '• ' + p.mode : ''}${p.presenceDate ? ' • ' + formatDate(p.presenceDate) : ''}</div>
+        <div class="badges">
+          <span class="${p.presence === 'present' ? 'present' : 'absent'}">${p.presence === 'present' ? 'Présent' : 'Non émargé'}</span>
+          ${p.onsite ? '<span class="onsite">Sur place</span>' : ''}
+        </div>
+      </div>
+      <div class="participant-actions">
+        ${p.presence === 'present'
+          ? '<button class="ghost">Annuler</button>'
+          : '<button class="primary">Marquer présent</button>'}
+      </div>
+    `;
+    row.querySelector('button').addEventListener('click', () => updatePresence(p.id_client, p.presence !== 'present', 'manual'));
+    container.appendChild(row);
+  });
+}
+
+function updatePresence(idClient, markPresent, mode) {
+  const evt = events.find((e) => e.id === currentEventId);
+  if (!evt) return;
+  const participant = evt.participants.find((p) => p.id_client === idClient);
+  if (!participant) return;
+  participant.presence = markPresent ? 'present' : 'absent';
+  participant.presenceDate = markPresent ? nowISO() : null;
+  participant.mode = markPresent ? mode : null;
+  evt.updatedAt = nowISO();
+  saveEvents();
+  updateStats();
+  renderParticipants();
+}
+
+function addParticipant(data, markPresent) {
+  const evt = events.find((e) => e.id === currentEventId);
+  if (!evt) return { added: false, reason: 'Sélectionnez un événement.' };
+  const idClient = data.id_client || uid();
+  if (evt.participants.some((p) => p.id_client === idClient)) {
+    return { added: false, reason: 'ID client déjà présent.' };
+  }
+  evt.participants.push({
+    id_client: idClient,
+    nom: data.nom || 'Inconnu',
+    prenom: data.prenom || '',
+    email: data.email || '',
+    role: data.role || '',
+    source: data.source || 'manual',
+    onsite: data.onsite || false,
+    presence: markPresent ? 'present' : 'absent',
+    presenceDate: markPresent ? nowISO() : null,
+    mode: markPresent ? data.mode || 'manual' : null,
+    createdAt: nowISO(),
+  });
+  evt.updatedAt = nowISO();
+  saveEvents();
+  updateStats();
+  renderParticipants();
+  return { added: true };
+}
+
+function normalizeHeader(key) {
+  return (key || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[’']/g, "'")
+    .replace(/\s+/g, ' ');
+}
+
+function mapExternalRow(raw) {
+  const normalized = {};
+  Object.entries(raw || {}).forEach(([k, v]) => normalized[normalizeHeader(k)] = v);
+  const record = {
+    id_client: String(normalized["id d'inscription"] || normalized['id dinscription'] || '').trim(),
+    contact: String(normalized['contact'] || '').trim(),
+    email: String(normalized["adresse email (contact) (relation)"] || '').trim(),
+    role: String(normalized['rôle principal'] || '').trim(),
+    evenement: String(normalized['événement'] || '').trim(),
+    statut: String(normalized["statut (contact) (relation)"] || '').trim(),
+  };
+  const parts = record.contact.split(' ').filter(Boolean);
+  const nom = parts.length ? parts.pop() : record.contact;
+  const prenom = parts.join(' ');
+  return {
+    id_client: record.id_client,
+    nom: nom || 'Inconnu',
+    prenom,
+    email: record.email,
+    role: record.role,
+    source: 'import',
+    onsite: false,
+    presence: 'absent',
+    meta: { evenement: record.evenement, statut: record.statut },
+  };
+}
+
+function parseExcel(file, callback) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const data = new Uint8Array(e.target.result);
+    const wb = XLSX.read(data, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws);
+    const normalizedHeaders = Object.keys(rows[0] || {}).map(normalizeHeader);
+    const required = ["id d'inscription", 'id dinscription', 'contact', "adresse email (contact) (relation)"];
+    const hasId = normalizedHeaders.includes("id d'inscription") || normalizedHeaders.includes('id dinscription');
+    const hasContact = normalizedHeaders.includes('contact');
+    const hasEmail = normalizedHeaders.includes("adresse email (contact) (relation)");
+    if (!(hasId && hasContact && hasEmail)) {
+      alert('Colonnes obligatoires manquantes : ID d\'inscription, Contact, Adresse email (Contact) (Relation)');
+      return;
+    }
+    const mapped = rows.map(mapExternalRow).filter((r) => r.id_client);
+    callback(mapped);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function importParticipants(rows, targetEventId) {
+  const evt = events.find((e) => e.id === targetEventId);
+  if (!evt) return;
+  let imported = 0;
+  let duplicates = 0;
+  rows.forEach((row) => {
+    const exists = evt.participants.some((p) => p.id_client === row.id_client);
+    if (exists) { duplicates += 1; return; }
+    const result = addParticipant({ ...row, source: 'import' }, false);
+    if (result.added) imported += 1;
+  });
+  lastImportSummary = `${imported} ajoutés • ${duplicates} doublons ignorés`;
+  document.getElementById('importSummary').textContent = lastImportSummary;
+  document.getElementById('modalImportSummary').textContent = lastImportSummary;
+  if (!evt.capacity && evt.participants.length) {
+    evt.capacity = evt.participants.length;
+  }
+  evt.updatedAt = nowISO();
+  saveEvents();
+  updateStats();
+  renderParticipants();
+}
+
+function switchTab(tab) {
+  ['scan', 'list', 'export'].forEach((key) => {
+    document.querySelector(`[data-tab="${key}"]`).classList.toggle('active', key === tab);
+    document.getElementById(`tab-${key}`).classList.toggle('hidden', key !== tab);
+  });
+}
+
+function startScanner() {
+  if (!currentEventId) return alert('Sélectionnez un événement.');
+  const container = document.getElementById('qr-reader');
+  container.innerHTML = '';
+  scanner = new Html5Qrcode('qr-reader');
+  scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 250 }, (decoded) => handleScan(decoded.trim()), () => {});
+  document.getElementById('scanResult').textContent = 'Scanner actif...';
+}
+
+function stopScanner() {
+  if (scanner) {
+    scanner.stop().then(() => scanner.clear());
+    document.getElementById('scanResult').textContent = 'Scanner arrêté.';
+  }
+}
+
+function handleScan(idClient) {
+  const evt = events.find((e) => e.id === currentEventId);
+  if (!evt) return;
+  const participant = evt.participants.find((p) => p.id_client === idClient);
+  if (!participant) {
+    document.getElementById('scanResult').textContent = `Inconnu : ${idClient}`;
+    return;
+  }
+  if (participant.presence === 'present') {
+    document.getElementById('scanResult').textContent = `${participant.nom} déjà émargé.`;
+    return;
+  }
+  updatePresence(idClient, true, 'scan');
+  document.getElementById('scanResult').textContent = `${participant.nom} marqué présent.`;
+}
+
+function exportExcel(filter) {
+  const evt = events.find((e) => e.id === currentEventId);
+  if (!evt) return;
+  let rows = evt.participants;
+  if (filter === 'present') rows = rows.filter((p) => p.presence === 'present');
+  if (filter === 'absent') rows = rows.filter((p) => p.presence !== 'present');
+  if (filter === 'onsite') rows = rows.filter((p) => p.onsite);
+  const data = rows.map((p) => ({
+    "ID d'inscription": p.id_client,
+    Nom: p.nom,
+    Prénom: p.prenom,
+    Email: p.email,
+    Rôle: p.role || '',
+    Statut: p.presence,
+    "Date/heure": p.presenceDate ? formatDate(p.presenceDate) : '',
+    Mode: p.mode || '',
+    Source: p.source,
+    "Ajout sur place": p.onsite ? 'oui' : 'non',
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Participants');
+  XLSX.writeFile(wb, `${evt.name || 'export'}.xlsx`);
+}
+
+function resetDemo() {
+  if (confirm('Supprimer toutes les données locales ?')) {
+    localStorage.removeItem(storageKey);
+    events = [];
+    currentEventId = null;
+    document.getElementById('eventDetail').classList.add('hidden');
+    renderEventList();
+  }
+}
+
+// Event listeners
+document.getElementById('newEventBtn').addEventListener('click', openModal);
+document.getElementById('closeModal').addEventListener('click', closeModal);
+document.getElementById('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+
+['eventSearch', 'filterStart', 'filterEnd', 'statusFilter'].forEach((id) => {
+  document.getElementById(id).addEventListener('input', renderEventList);
+});
+
+['participantSearch', 'presenceFilter'].forEach((id) => document.getElementById(id).addEventListener('input', renderParticipants));
+
+document.getElementById('saveEvent').addEventListener('click', () => {
+  const name = document.getElementById('eventName').value.trim();
+  const date = document.getElementById('eventDate').value;
+  if (!name) return alert('Le nom de l\'événement est obligatoire');
+  const capacityValue = document.getElementById('eventCapacity').value;
+  const evt = {
+    id: uid(),
+    name,
+    date,
+    capacity: capacityValue ? Number(capacityValue) : null,
+    participants: [],
+    createdAt: nowISO(),
+    updatedAt: nowISO(),
+  };
+  if (!evt.capacity && modalImportCache.length) evt.capacity = modalImportCache.length;
+  events.push(evt);
+  saveEvents();
+  renderEventList();
+  closeModal();
+  selectEvent(evt.id);
+  if (modalImportCache.length) importParticipants(modalImportCache, evt.id);
+});
+
+document.querySelectorAll('.tab').forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+['detailImport', 'modalImport'].forEach((id) => {
+  document.getElementById(id).addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    parseExcel(file, (rows) => {
+      if (id === 'modalImport') {
+        modalImportCache = rows;
+        lastImportSummary = `${rows.length} lignes prêtes à être importées`;
+        document.getElementById('modalImportSummary').textContent = lastImportSummary;
+        if (!document.getElementById('eventCapacity').value) document.getElementById('eventCapacity').value = rows.length;
+      } else if (currentEventId) {
+        importParticipants(rows, currentEventId);
+      }
+    });
+  });
+});
+
+['addAsPresent', 'addAsPending'].forEach((id) => {
+  document.getElementById(id).addEventListener('click', () => {
+    const nom = document.getElementById('addNom').value.trim();
+    const prenom = document.getElementById('addPrenom').value.trim();
+    const email = document.getElementById('addEmail').value.trim();
+    if (!nom || !prenom || !email) return alert('Nom, prénom et email sont requis');
+    const data = {
+      nom,
+      prenom,
+      email,
+      id_client: document.getElementById('addClientId').value.trim(),
+      role: document.getElementById('addRole').value.trim(),
+      onsite: true,
+      source: 'manual',
+    };
+    const mark = id === 'addAsPresent';
+    const result = addParticipant(data, mark);
+    if (!result.added) alert(result.reason);
+    ['addClientId', 'addRole'].forEach((f) => document.getElementById(f).value = '');
+  });
+});
+
+document.getElementById('startScanner').addEventListener('click', startScanner);
+document.getElementById('stopScanner').addEventListener('click', stopScanner);
+document.getElementById('exportBtn').addEventListener('click', () => exportExcel(document.getElementById('exportFilter').value));
+document.getElementById('resetDataBtn').addEventListener('click', resetDemo);
+
+renderEventList();

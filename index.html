@@ -837,28 +837,19 @@
 
             const handleScan = (idClient) => {
                 const participants = Storage.getParticipants(event.id);
-                const participant = participants.find(p => p.id_client.trim() === idClient.trim());
+                const participant = participants.find(p => p.id_client === idClient);
 
                 if (!participant) {
-                    setMessage(`❌ ID d'inscription "${idClient}" non trouvé dans la liste`);
+                    setMessage(`❌ ID ${idClient} non trouvé`);
                     setMessageType('error');
                     setLastScan({ idClient, status: 'unknown' });
-                    
-                    // Son d'erreur
-                    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBjiP1vLNeSsFJHXD8N+UQwsTW7Ln7bNgGAg+m+DwuWwhBjaO1fLOeitFI3PC8OGZRAwRWbHm7q9bFgk8muDwvGwiBjaN1vLPfSxFI3HB8OKaRQwRV7Hn77BcFgk7mt/wvW0iBjWM1fLQfixEI2/A8OOcRgwQVrDm8LFdFwk6mN/wvm4jBjSL1PLRfy1EIm+/8OSdRwwQVbDl8LJeFwo5l9/wwG8kBjOK1PLSgC5EIm+/8OWeRwwPU6/k8LNfGAo4lN3wwXAkBTGJ0/LTgS9EIm6+8OafSAwOUq7k87RgGQo2k9zwwnElBTCH0vLUgjBEIm28 8OihSQwNU67j9L RhGgo1ktv' +
-'wwxIlBS+G0fLVgzFDImy78OmiSgwMUavj9bZjGwo0kdvwxBMlBS6F0PLWhDJDImq68OqkSwwLUKrj9rllHAozj9rwxRQlBS2D z/LXhTNDIWm58OutTAwKT6nj97pnHQozjtrzxhUlBS2Cz/LYhjRDIWi48Oy'</audio>');
-                    audio.play().catch(() => {});
                     return;
                 }
 
                 if (participant.present) {
-                    setMessage(`⚠️ ${participant.nom} déjà émargé le ${new Date(participant.datePresence).toLocaleString('fr-FR')}`);
+                    setMessage(`⚠️ ${participant.prenom} ${participant.nom} déjà émargé le ${new Date(participant.datePresence).toLocaleString('fr-FR')}`);
                     setMessageType('warning');
                     setLastScan({ ...participant, status: 'duplicate' });
-                    
-                    // Son d'avertissement
-                    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/');
-                    audio.play().catch(() => {});
                     return;
                 }
 
@@ -870,13 +861,9 @@
                 
                 Storage.saveParticipants(event.id, updated);
                 
-                setMessage(`✅ ${participant.nom} émargé avec succès !`);
+                setMessage(`✅ ${participant.prenom} ${participant.nom} émargé avec succès`);
                 setMessageType('success');
                 setLastScan({ ...participant, status: 'success' });
-
-                // Son de succès
-                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAAD/////AAAAgICAgICAgICAgICAgICAgP//');
-                audio.play().catch(() => {});
 
                 setTimeout(() => {
                     setMessage('');

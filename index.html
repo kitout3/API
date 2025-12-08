@@ -40,8 +40,6 @@
             const [view, setView] = useState('home');
             const [events, setEvents] = useState([]);
             const [currentEvent, setCurrentEvent] = useState(null);
-            const [searchTerm, setSearchTerm] = useState('');
-            const [filterStatus, setFilterStatus] = useState('all');
 
             useEffect(() => {
                 setEvents(Storage.getEvents());
@@ -85,10 +83,11 @@
                 return <CreateEventPage 
                     onBack={() => setView('home')}
                     onCreate={(eventData) => {
-                        const newEvent = createEvent(eventData);
-                        setCurrentEvent(newEvent);
-                        setView('detail');
-                    }}
+    const newEvent = createEvent(eventData);
+    setCurrentEvent(newEvent);
+    setView('detail');
+    return newEvent;
+}}
                 />;
             }
 
@@ -248,14 +247,16 @@
             });
             const [participants, setParticipants] = useState([]);
             const [importing, setImporting] = useState(false);
+            const [autoEventName, setAutoEventName] = useState('');
 
-            const handleSubmit = (e) => {
+            ubmit = (e) => {
                 e.preventDefault();
-                if (!formData.name || !formData.date) {
-                    alert('Veuillez remplir les champs obligatoires');
+                const eventName = formData.name || autoEventName;
+                if (!eventName || !formData.date) {
+                    alert('Veuillez remplir les champs obligatoires (nom et date)');
                     return;
                 }
-                const event = onCreate(formData);
+                const event = onCreate({...formData, name: eventName});
                 if (participants.length > 0) {
                     Storage.saveParticipants(event.id, participants);
                 }
@@ -275,17 +276,27 @@
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                         const rows = XLSX.utils.sheet_to_json(firstSheet);
 
-                        const imported = rows.map((row, index) => ({
-                            id_client: row.id_client || row.ID || row['ID client'] || row['id client'] || row["ID d'inscription"] || `GEN_${Date.now()}_${index}`,
-                            nom: row.nom || row.Nom || row.NOM || '',
-                            prenom: row.prenom || row.Prénom || row.prenom || row.PRENOM || '',
-                            email: row.email || row.Email || row['Adresse email'] || row['Adresse email (Contact) (Relation)'] || '',
-                            gerant: row.gerant || row.Gérant || row['Gérant (Contact) (Relation)'] || '',
-                            source: 'import',
-                            present: false,
-                            datePresence: null,
-                            modeValidation: null
-                        }));
+                        // Extraire le nom de l'événement depuis la première ligne
+                        if (rows.length > 0 && rows[0]['Événement']) {
+                            const eventName = rows[0]['Événement'];
+                            setAutoEventName(eventName);
+                            setFormData({...formData, name: eventName});
+                        }
+
+const imported = rows.map((row, index) => {
+    const id = row["ID d'inscription"];
+
+    return {
+        id_client: id ? String(id).trim() : `GEN_${Date.now()}_${index}`,
+        contact: row.Contact || '',
+        email: row.Email || row['Adresse email'] || '',
+        gerant: row.Gérant || '',
+        source: 'import',
+        present: false,
+        datePresence: null,
+        modeValidation: null
+    };
+});
 
                         const uniqueParticipants = imported.filter((p, index, self) =>
                             index === self.findIndex(t => t.id_client === p.id_client)
@@ -317,7 +328,7 @@
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Nom de l'événement *
+                                        Nom de l'événement {autoEventName && '(détecté automatiquement)'}
                                     </label>
                                     <input
                                         type="text"
@@ -325,7 +336,13 @@
                                         value={formData.name}
                                         onChange={(e) => setFormData({...formData, name: e.target.value})}
                                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder={autoEventName ? `Nom détecté: ${autoEventName}` : 'Nom de l\'événement'}
                                     />
+                                    {autoEventName && (
+                                        <p className="text-sm text-green-600 mt-1">
+                                            ✓ Nom d'événement détecté dans le fichier Excel
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div>
@@ -401,7 +418,7 @@
                                         )}
                                     </div>
                                     <p className="text-sm text-gray-500 mb-4">
-                                        Le fichier doit contenir les colonnes : nom, prenom, email (ou gérant)
+                                        Le fichier doit contenir : ID d'inscription, Contact, Gérant, Email
                                     </p>
                                     
                                     {participants.length > 0 && (
@@ -413,17 +430,19 @@
                                                 <table className="w-full">
                                                     <thead className="bg-gray-100 sticky top-0">
                                                         <tr>
-                                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Nom</th>
-                                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Prénom</th>
+                                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">ID d'inscription</th>
                                                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Contact</th>
+                                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Gérant</th>
+                                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Email</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-200">
                                                         {participants.map((p, idx) => (
                                                             <tr key={idx} className="hover:bg-gray-50">
-                                                                <td className="px-4 py-2 text-sm text-gray-900">{p.nom}</td>
-                                                                <td className="px-4 py-2 text-sm text-gray-900">{p.prenom}</td>
-                                                                <td className="px-4 py-2 text-sm text-gray-600">{p.gerant || p.email}</td>
+                                                                <td className="px-4 py-2 text-xs text-gray-500 font-mono">{p.id_client}</td>
+                                                                <td className="px-4 py-2 text-sm text-gray-900 font-medium">{p.contact}</td>
+                                                                <td className="px-4 py-2 text-sm text-gray-600">{p.gerant}</td>
+                                                                <td className="px-4 py-2 text-sm text-gray-600">{p.email}</td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
@@ -462,8 +481,8 @@
             const [filter, setFilter] = useState('all');
             const [showAddForm, setShowAddForm] = useState(false);
             const [newParticipant, setNewParticipant] = useState({
-                nom: '',
-                prenom: '',
+                contact: '',
+                gerant: '',
                 email: '',
                 id_client: ''
             });
@@ -498,16 +517,16 @@
             };
 
             const addParticipant = (markAsPresent) => {
-                if (!newParticipant.nom || !newParticipant.prenom || !newParticipant.email) {
-                    alert('Veuillez remplir tous les champs obligatoires');
+                if (!newParticipant.contact) {
+                    alert('Veuillez remplir le nom du contact');
                     return;
                 }
 
                 const participant = {
                     id_client: newParticipant.id_client || `MANUAL_${Date.now()}`,
-                    nom: newParticipant.nom,
-                    prenom: newParticipant.prenom,
+                    contact: newParticipant.contact,
                     email: newParticipant.email,
+                    gerant: newParticipant.gerant,
                     source: 'manuel',
                     present: markAsPresent,
                     datePresence: markAsPresent ? new Date().toISOString() : null,
@@ -515,7 +534,7 @@
                 };
 
                 saveParticipants([...participants, participant]);
-                setNewParticipant({ nom: '', prenom: '', email: '', id_client: '' });
+                setNewParticipant({ contact: '', gerant: '', email: '', id_client: '' });
                 setShowAddForm(false);
             };
 
@@ -528,8 +547,8 @@
 
                 const ws = XLSX.utils.json_to_sheet(dataToExport.map(p => ({
                     'ID Client': p.id_client,
-                    'Nom': p.nom,
-                    'Prénom': p.prenom,
+                    'Contact': p.contact,
+                    'Gérant': p.gerant,
                     'Email': p.email,
                     'Statut': p.present ? 'Présent' : 'Absent',
                     'Date de présence': p.datePresence ? new Date(p.datePresence).toLocaleString('fr-FR') : '',
@@ -544,9 +563,9 @@
 
             const filteredParticipants = participants.filter(p => {
                 const matchSearch = 
-                    p.nom.toLowerCase().includes(search.toLowerCase()) ||
-                    p.prenom.toLowerCase().includes(search.toLowerCase()) ||
-                    p.email.toLowerCase().includes(search.toLowerCase()) ||
+                    (p.contact || '').toLowerCase().includes(search.toLowerCase()) ||
+                    (p.gerant || '').toLowerCase().includes(search.toLowerCase()) ||
+                    (p.email || '').toLowerCase().includes(search.toLowerCase()) ||
                     p.id_client.toLowerCase().includes(search.toLowerCase());
                 
                 const matchFilter = 
@@ -612,12 +631,12 @@
                                 >
                                     + Ajouter un participant
                                 </button>
-                                <div className="relative">
+                                <div className="relative group">
                                     <button className="px-6 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition">
                                         📥 Exporter Excel
                                     </button>
                                     <div className="absolute top-full mt-2 right-0 bg-white shadow-lg rounded-lg overflow-hidden hidden group-hover:block z-10">
-                                        <button onClick={() => exportToExcel('all')} className="block w-full px-4 py-2 text-left hover:bg-gray-100">Tous</button>
+                                        <button onClick={() => exportToExcel('all')} className="block w-full px-4 py-2 text-left hover:bg-gray-100 whitespace-nowrap">Tous</button>
                                         <button onClick={() => exportToExcel('presents')} className="block w-full px-4 py-2 text-left hover:bg-gray-100">Présents</button>
                                         <button onClick={() => exportToExcel('absents')} className="block w-full px-4 py-2 text-left hover:bg-gray-100">Absents</button>
                                         <button onClick={() => exportToExcel('manuels')} className="block w-full px-4 py-2 text-left hover:bg-gray-100">Ajouts manuels</button>
@@ -632,21 +651,21 @@
                                 <div className="grid md:grid-cols-2 gap-4 mb-4">
                                     <input
                                         type="text"
-                                        placeholder="Nom *"
-                                        value={newParticipant.nom}
-                                        onChange={(e) => setNewParticipant({...newParticipant, nom: e.target.value})}
+                                        placeholder="Contact / Nom *"
+                                        value={newParticipant.contact}
+                                        onChange={(e) => setNewParticipant({...newParticipant, contact: e.target.value})}
                                         className="px-4 py-2 border border-gray-300 rounded-lg"
                                     />
                                     <input
                                         type="text"
-                                        placeholder="Prénom *"
-                                        value={newParticipant.prenom}
-                                        onChange={(e) => setNewParticipant({...newParticipant, prenom: e.target.value})}
+                                        placeholder="Gérant"
+                                        value={newParticipant.gerant}
+                                        onChange={(e) => setNewParticipant({...newParticipant, gerant: e.target.value})}
                                         className="px-4 py-2 border border-gray-300 rounded-lg"
                                     />
                                     <input
                                         type="email"
-                                        placeholder="Email *"
+                                        placeholder="Email"
                                         value={newParticipant.email}
                                         onChange={(e) => setNewParticipant({...newParticipant, email: e.target.value})}
                                         className="px-4 py-2 border border-gray-300 rounded-lg"
@@ -703,65 +722,67 @@
                                 </select>
                             </div>
 
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead className="bg-gray-50">
-                                        <tr>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prénom</th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200">
-                                        {filteredParticipants.map(p => (
-                                            <tr key={p.id_client} className="hover:bg-gray-50">
-                                                <td className="px-4 py-3 text-sm text-gray-900">{p.id_client}</td>
-                                                <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.nom}</td>
-                                                <td className="px-4 py-3 text-sm text-gray-900">{p.prenom}</td>
-                                                <td className="px-4 py-3 text-sm text-gray-600">{p.email}</td>
-                                                <td className="px-4 py-3">
-                                                    {p.present ? (
-                                                        <div>
-                                                            <span className="inline-block px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
-                                                                ✓ Présent
-                                                            </span>
-                                                            <div className="text-xs text-gray-500 mt-1">
-                                                                {new Date(p.datePresence).toLocaleString('fr-FR')}
-                                                            </div>
-                                                            <div className="text-xs text-gray-500">
-                                                                {p.modeValidation}
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="inline-block px-2 py-1 text-xs font-semibold text-gray-600 bg-gray-100 rounded-full">
-                                                            Absent
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    {p.present ? (
-                                                        <button
-                                                            onClick={() => cancelPresence(p.id_client)}
-                                                            className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded"
-                                                        >
-                                                            Annuler
-                                                        </button>
-                                                    ) : (
-                                                        <button
-                                                            onClick={() => markPresent(p.id_client)}
-                                                            className="px-3 py-1 text-sm text-green-600 hover:bg-green-50 rounded"
-                                                        >
-                                                            Marquer présent
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {filteredParticipants.map(p => (
+                                    <div key={p.id_client} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-blue-300 transition">
+                                        <div className="mb-3">
+                                            <h4 className="font-bold text-gray-900 text-lg mb-2">
+                                                {p.contact}
+                                            </h4>
+                                            {p.gerant && (
+                                                <p className="text-sm text-gray-700 mb-1 flex items-center gap-1">
+                                                    <span className="font-medium">👤 Gérant:</span> {p.gerant}
+                                                </p>
+                                            )}
+                                            {p.email && (
+                                                <p className="text-sm text-gray-700 mb-1 flex items-center gap-1">
+                                                    <span className="font-medium">✉️ Email:</span> {p.email}
+                                                </p>
+                                            )}
+                                            <p className="text-xs text-gray-400 mt-2 font-mono">
+                                                ID: {p.id_client}
+                                            </p>
+                                        </div>
+                                        
+                                        <div className="mb-3 pt-3 border-t border-gray-200">
+                                            {p.present ? (
+                                                <div>
+                                                    <span className="inline-block px-3 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
+                                                        ✓ Présent
+                                                    </span>
+                                                    <div className="text-xs text-gray-500 mt-2">
+                                                        📅 {new Date(p.datePresence).toLocaleString('fr-FR')}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">
+                                                        🔖 {p.modeValidation}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <span className="inline-block px-3 py-1 text-xs font-semibold text-gray-600 bg-gray-100 rounded-full">
+                                                    Absent
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            {p.present ? (
+                                                <button
+                                                    onClick={() => cancelPresence(p.id_client)}
+                                                    className="flex-1 px-3 py-2 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition font-medium"
+                                                >
+                                                    Annuler émargement
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => markPresent(p.id_client)}
+                                                    className="flex-1 px-3 py-2 text-sm text-white bg-green-600 hover:bg-green-700 rounded-lg transition font-medium"
+                                                >
+                                                    Marquer présent
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
 
                             {filteredParticipants.length === 0 && (
@@ -811,33 +832,38 @@
                 setScanning(true);
             };
 
-            const handleScan = (idClient) => {
+            can = (idClient) => {
                 const participants = Storage.getParticipants(event.id);
-                const participant = participants.find(p => p.id_client === idClient);
+ const scannedId = String(idClient).trim();
+
+const participant = participants.find(
+    p => String(p.id_client).trim() === scannedId
+);
+
 
                 if (!participant) {
-                    setMessage(`❌ ID ${idClient} non trouvé`);
+                    setMessage(`❌ ID d'inscription "${idClient}" non trouvé dans la liste`);
                     setMessageType('error');
                     setLastScan({ idClient, status: 'unknown' });
                     return;
                 }
 
                 if (participant.present) {
-                    setMessage(`⚠️ ${participant.prenom} ${participant.nom} déjà émargé le ${new Date(participant.datePresence).toLocaleString('fr-FR')}`);
+                    setMessage(`⚠️ ${participant.contact} déjà émargé le ${new Date(participant.datePresence).toLocaleString('fr-FR')}`);
                     setMessageType('warning');
                     setLastScan({ ...participant, status: 'duplicate' });
                     return;
                 }
 
                 const updated = participants.map(p => 
-                    p.id_client === idClient
+                    String(p.id_client).trim() === scannedId
                         ? { ...p, present: true, datePresence: new Date().toISOString(), modeValidation: 'qr' }
                         : p
                 );
                 
                 Storage.saveParticipants(event.id, updated);
                 
-                setMessage(`✅ ${participant.prenom} ${participant.nom} émargé avec succès`);
+                setMessage(`✅ ${participant.contact} émargé avec succès !`);
                 setMessageType('success');
                 setLastScan({ ...participant, status: 'success' });
 
@@ -907,22 +933,9 @@
 
         // Rendu de l'application
         ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+pourquoi le fichier excel n'est il pas enregistrer dans la gestion de l'événement, il devrais me crée des ficher avec le contact nom du gérant et mail sauf que ça ne fonctionne pas rien n'est ajouter pourquoi N

@@ -889,15 +889,24 @@ const ws = XLSX.utils.json_to_sheet(dataToExport.map(p => ({
                             {(() => {
                                 const participants = Storage.getParticipants(event.id);
                                 const presents = participants.filter(p => p.present).length;
+
                                 return (
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="text-center p-4 bg-blue-50 rounded-lg">
-                                            <div className="text-3xl font-bold text-blue-600">{participants.length}</div>
-                                            <div className="text-sm text-gray-600">Inscrits</div>
+                                            <div className="text-3xl font-bold text-blue-600">
+                                                {participants.length}
+                                            </div>
+                                            <div className="text-sm text-gray-600">
+                                                Inscrits
+                                            </div>
                                         </div>
                                         <div className="text-center p-4 bg-green-50 rounded-lg">
-                                            <div className="text-3xl font-bold text-green-600">{presents}</div>
-                                            <div className="text-sm text-gray-600">Présents</div>
+                                            <div className="text-3xl font-bold text-green-600">
+                                                {presents}
+                                            </div>
+                                            <div className="text-sm text-gray-600">
+                                                Présents
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -907,6 +916,7 @@ const ws = XLSX.utils.json_to_sheet(dataToExport.map(p => ({
                 </div>
             );
         }
+
 
         // Rendu de l'application
         ReactDOM.render(<App />, document.getElementById('root'));

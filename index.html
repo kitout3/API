@@ -1,4 +1,3 @@
-./                                                                                                  0000755 0000000 0000000 00000000000 15115557756 007732  5                                                                                                    ustar   root                            root                                                                                                                                                                                                                   ./index.html                                                                                        0000644 0000000 0000000 00000144017 15115557754 011734  0                                                                                                    ustar   root                            root                                                                                                                                                                                                                   <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
@@ -283,20 +282,51 @@ if (view === 'create') {
                             setFormData({...formData, name: eventName});
                         }
 
-const imported = rows.map((row, index) => {
-    const id = row["ID d'inscription"];
+const imported = rows
+    .map((row) => {
+        // On récupère STRICTEMENT la colonne "ID d'inscription"
+        const rawId =
+            row["ID d'inscription"] ??
+            row["Id d'inscription"] ??
+            row["Id d’inscription"] ??
+            row["ID d’inscription"];
 
-    return {
-        id_client: id ? String(id).trim() : `GEN_${Date.now()}_${index}`,
-        contact: row.Contact || '',
-        email: row.Email || row['Adresse email'] || '',
-        gerant: row.Gérant || '',
-        source: 'import',
-        present: false,
-        datePresence: null,
-        modeValidation: null
-    };
-});
+        // Si pas d'ID d'inscription → on ignore la ligne
+        if (!rawId) {
+            return null;
+        }
+
+        const inscriptionId = String(rawId).trim();
+
+        return {
+            // On NE TOUCHE PAS à la valeur, on la copie telle quelle (juste trim)
+            id_client: inscriptionId,
+
+            // Colonnes principales de ton Excel
+            contact: (row["Contact"] ?? row.contact ?? '').toString().trim(),
+            email: (
+                row["Adresse email (Contact) (Relation)"] ??
+                row["Adresse email"] ??
+                row.Email ??
+                row.email ??
+                ''
+            ).toString().trim(),
+            gerant: (
+                row["Gérant (Contact) (Relation)"] ??
+                row["Gérant"] ??
+                row.gerant ??
+                ''
+            ).toString().trim(),
+
+            source: 'import',
+            present: false,
+            datePresence: null,
+            modeValidation: null
+        };
+    })
+    // On supprime les lignes sans ID
+    .filter(p => p !== null);
+
 
                         const uniqueParticipants = imported.filter((p, index, self) =>
                             index === self.findIndex(t => t.id_client === p.id_client)

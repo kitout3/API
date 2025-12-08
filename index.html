@@ -79,16 +79,17 @@
                 />;
             }
 
-            if (view === 'create') {
-                return <CreateEventPage 
-                    onBack={() => setView('home')}
-                    onCreate={(eventData) => {
-                        const newEvent = createEvent(eventData);
-                        setCurrentEvent(newEvent);
-                        setView('detail');
-                    }}
-                />;
-            }
+if (view === 'create') {
+    return <CreateEventPage 
+        onBack={() => setView('home')}
+        onCreate={(eventData) => {
+            const newEvent = createEvent(eventData);
+            setCurrentEvent(newEvent);
+            setView('detail');
+            return newEvent; // ✅ très important
+        }}
+    />;
+}
 
             if (view === 'detail' && currentEvent) {
                 return <EventDetailPage 

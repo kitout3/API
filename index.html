@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestion d'Événements</title>
+    <title>Gestion d'Émargement - Événements</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -248,14 +248,16 @@
             });
             const [participants, setParticipants] = useState([]);
             const [importing, setImporting] = useState(false);
+            const [autoEventName, setAutoEventName] = useState('');
 
             const handleSubmit = (e) => {
                 e.preventDefault();
-                if (!formData.name || !formData.date) {
-                    alert('Veuillez remplir les champs obligatoires');
+                const eventName = formData.name || autoEventName;
+                if (!eventName || !formData.date) {
+                    alert('Veuillez remplir les champs obligatoires (nom et date)');
                     return;
                 }
-                const event = onCreate(formData);
+                const event = onCreate({...formData, name: eventName});
                 if (participants.length > 0) {
                     Storage.saveParticipants(event.id, participants);
                 }
@@ -275,12 +277,19 @@
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                         const rows = XLSX.utils.sheet_to_json(firstSheet);
 
+                        // Extraire le nom de l'événement depuis la première ligne
+                        if (rows.length > 0 && rows[0]['Événement']) {
+                            const eventName = rows[0]['Événement'];
+                            setAutoEventName(eventName);
+                            setFormData({...formData, name: eventName});
+                        }
+
                         const imported = rows.map((row, index) => ({
-                            id_client: row.id_client || row.ID || row['ID client'] || row['id client'] || row["ID d'inscription"] || `GEN_${Date.now()}_${index}`,
-                            nom: row.nom || row.Nom || row.NOM || '',
-                            prenom: row.prenom || row.Prénom || row.prenom || row.PRENOM || '',
-                            email: row.email || row.Email || row['Adresse email'] || row['Adresse email (Contact) (Relation)'] || '',
-                            gerant: row.gerant || row.Gérant || row['Gérant (Contact) (Relation)'] || '',
+                            id_client: row["ID d'inscription"] || row.id_client || row.ID || row['ID client'] || `GEN_${Date.now()}_${index}`,
+                            nom: row.Contact || row.nom || row.Nom || row.NOM || '',
+                            prenom: '',
+                            email: row['Adresse email (Contact) (Relation)'] || row.email || row.Email || row['Adresse email'] || '',
+                            gerant: row['Gérant (Contact) (Relation)'] || row.gerant || row.Gérant || '',
                             source: 'import',
                             present: false,
                             datePresence: null,
@@ -317,7 +326,7 @@
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Nom de l'événement *
+                                        Nom de l'événement {autoEventName && '(détecté automatiquement)'}
                                     </label>
                                     <input
                                         type="text"
@@ -325,7 +334,13 @@
                                         value={formData.name}
                                         onChange={(e) => setFormData({...formData, name: e.target.value})}
                                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder={autoEventName ? `Nom détecté: ${autoEventName}` : 'Nom de l\'événement'}
                                     />
+                                    {autoEventName && (
+                                        <p className="text-sm text-green-600 mt-1">
+                                            ✓ Nom d'événement détecté dans le fichier Excel
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div>
@@ -413,17 +428,19 @@
                                                 <table className="w-full">
                                                     <thead className="bg-gray-100 sticky top-0">
                                                         <tr>
-                                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Nom</th>
-                                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Prénom</th>
+                                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">ID d'inscription</th>
                                                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Contact</th>
+                                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Gérant</th>
+                                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Email</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-200">
                                                         {participants.map((p, idx) => (
                                                             <tr key={idx} className="hover:bg-gray-50">
-                                                                <td className="px-4 py-2 text-sm text-gray-900">{p.nom}</td>
-                                                                <td className="px-4 py-2 text-sm text-gray-900">{p.prenom}</td>
-                                                                <td className="px-4 py-2 text-sm text-gray-600">{p.gerant || p.email}</td>
+                                                                <td className="px-4 py-2 text-xs text-gray-500 font-mono">{p.id_client}</td>
+                                                                <td className="px-4 py-2 text-sm text-gray-900 font-medium">{p.nom}</td>
+                                                                <td className="px-4 py-2 text-sm text-gray-600">{p.gerant}</td>
+                                                                <td className="px-4 py-2 text-sm text-gray-600">{p.email}</td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
@@ -820,19 +837,28 @@
 
             const handleScan = (idClient) => {
                 const participants = Storage.getParticipants(event.id);
-                const participant = participants.find(p => p.id_client === idClient);
+                const participant = participants.find(p => p.id_client.trim() === idClient.trim());
 
                 if (!participant) {
-                    setMessage(`❌ ID ${idClient} non trouvé`);
+                    setMessage(`❌ ID d'inscription "${idClient}" non trouvé dans la liste`);
                     setMessageType('error');
                     setLastScan({ idClient, status: 'unknown' });
+                    
+                    // Son d'erreur
+                    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBjiP1vLNeSsFJHXD8N+UQwsTW7Ln7bNgGAg+m+DwuWwhBjaO1fLOeitFI3PC8OGZRAwRWbHm7q9bFgk8muDwvGwiBjaN1vLPfSxFI3HB8OKaRQwRV7Hn77BcFgk7mt/wvW0iBjWM1fLQfixEI2/A8OOcRgwQVrDm8LFdFwk6mN/wvm4jBjSL1PLRfy1EIm+/8OSdRwwQVbDl8LJeFwo5l9/wwG8kBjOK1PLSgC5EIm+/8OWeRwwPU6/k8LNfGAo4lN3wwXAkBTGJ0/LTgS9EIm6+8OafSAwOUq7k87RgGQo2k9zwwnElBTCH0vLUgjBEIm28 8OihSQwNU67j9L RhGgo1ktv' +
+'wwxIlBS+G0fLVgzFDImy78OmiSgwMUavj9bZjGwo0kdvwxBMlBS6F0PLWhDJDImq68OqkSwwLUKrj9rllHAozj9rwxRQlBS2D z/LXhTNDIWm58OutTAwKT6nj97pnHQozjtrzxhUlBS2Cz/LYhjRDIWi48Oy'</audio>');
+                    audio.play().catch(() => {});
                     return;
                 }
 
                 if (participant.present) {
-                    setMessage(`⚠️ ${participant.prenom} ${participant.nom} déjà émargé le ${new Date(participant.datePresence).toLocaleString('fr-FR')}`);
+                    setMessage(`⚠️ ${participant.nom} déjà émargé le ${new Date(participant.datePresence).toLocaleString('fr-FR')}`);
                     setMessageType('warning');
                     setLastScan({ ...participant, status: 'duplicate' });
+                    
+                    // Son d'avertissement
+                    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/');
+                    audio.play().catch(() => {});
                     return;
                 }
 
@@ -844,9 +870,13 @@
                 
                 Storage.saveParticipants(event.id, updated);
                 
-                setMessage(`✅ ${participant.prenom} ${participant.nom} émargé avec succès`);
+                setMessage(`✅ ${participant.nom} émargé avec succès !`);
                 setMessageType('success');
                 setLastScan({ ...participant, status: 'success' });
+
+                // Son de succès
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAAD/////AAAAgICAgICAgICAgICAgICAgP//');
+                audio.play().catch(() => {});
 
                 setTimeout(() => {
                     setMessage('');

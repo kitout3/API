@@ -83,11 +83,10 @@
                 return <CreateEventPage 
                     onBack={() => setView('home')}
                     onCreate={(eventData) => {
-    const newEvent = createEvent(eventData);
-    setCurrentEvent(newEvent);
-    setView('detail');
-    return newEvent;
-}}
+                        const newEvent = createEvent(eventData);
+                        setCurrentEvent(newEvent);
+                        setView('detail');
+                    }}
                 />;
             }
 
@@ -249,7 +248,7 @@
             const [importing, setImporting] = useState(false);
             const [autoEventName, setAutoEventName] = useState('');
 
-            ubmit = (e) => {
+            const handleSubmit = (e) => {
                 e.preventDefault();
                 const eventName = formData.name || autoEventName;
                 if (!eventName || !formData.date) {
@@ -283,20 +282,16 @@
                             setFormData({...formData, name: eventName});
                         }
 
-const imported = rows.map((row, index) => {
-    const id = row["ID d'inscription"];
-
-    return {
-        id_client: id ? String(id).trim() : `GEN_${Date.now()}_${index}`,
-        contact: row.Contact || '',
-        email: row.Email || row['Adresse email'] || '',
-        gerant: row.Gérant || '',
-        source: 'import',
-        present: false,
-        datePresence: null,
-        modeValidation: null
-    };
-});
+                        const imported = rows.map((row, index) => ({
+                            id_client: row["ID d'inscription"] || row.id_client || row.ID || row['ID client'] || `GEN_${Date.now()}_${index}`,
+                            contact: row.Contact || row.contact || '',
+                            email: row['Adresse email (Contact) (Relation)'] || row.email || row.Email || row['Adresse email'] || '',
+                            gerant: row['Gérant (Contact) (Relation)'] || row.gerant || row.Gérant || '',
+                            source: 'import',
+                            present: false,
+                            datePresence: null,
+                            modeValidation: null
+                        }));
 
                         const uniqueParticipants = imported.filter((p, index, self) =>
                             index === self.findIndex(t => t.id_client === p.id_client)
@@ -832,14 +827,9 @@ const imported = rows.map((row, index) => {
                 setScanning(true);
             };
 
-            can = (idClient) => {
+            const handleScan = (idClient) => {
                 const participants = Storage.getParticipants(event.id);
- const scannedId = String(idClient).trim();
-
-const participant = participants.find(
-    p => String(p.id_client).trim() === scannedId
-);
-
+                const participant = participants.find(p => p.id_client.trim() === idClient.trim());
 
                 if (!participant) {
                     setMessage(`❌ ID d'inscription "${idClient}" non trouvé dans la liste`);
@@ -856,7 +846,7 @@ const participant = participants.find(
                 }
 
                 const updated = participants.map(p => 
-                    String(p.id_client).trim() === scannedId
+                    p.id_client === idClient
                         ? { ...p, present: true, datePresence: new Date().toISOString(), modeValidation: 'qr' }
                         : p
                 );

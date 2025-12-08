@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestion d'Émargement - Événements</title>
+    <title>Gestion Événements</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -282,16 +282,16 @@
                             setFormData({...formData, name: eventName});
                         }
 
-                        const imported = rows.map((row, index) => ({
-                            id_client: row["ID d'inscription"] || row.id_client || row.ID || row['ID client'] || `GEN_${Date.now()}_${index}`,
-                            contact: row.Contact || row.contact || '',
-                            email: row['Adresse email (Contact) (Relation)'] || row.email || row.Email || row['Adresse email'] || '',
-                            gerant: row['Gérant (Contact) (Relation)'] || row.gerant || row.Gérant || '',
-                            source: 'import',
-                            present: false,
-                            datePresence: null,
-                            modeValidation: null
-                        }));
+const imported = rows.map((row, index) => ({
+    id_client: String(row["ID d'inscription"] ?? '').trim(),
+    contact: row.Contact || row.contact || '',
+    email: row['Adresse email (Contact) (Relation)'] || row.email || row.Email || row['Adresse email'] || '',
+    gerant: row['Gérant (Contact) (Relation)'] || row.gerant || row.Gérant || '',
+    source: 'import',
+    present: false,
+    datePresence: null,
+    modeValidation: null
+}));
 
                         const uniqueParticipants = imported.filter((p, index, self) =>
                             index === self.findIndex(t => t.id_client === p.id_client)
@@ -540,16 +540,16 @@
                 else if (type === 'absents') dataToExport = participants.filter(p => !p.present);
                 else if (type === 'manuels') dataToExport = participants.filter(p => p.source === 'manuel');
 
-                const ws = XLSX.utils.json_to_sheet(dataToExport.map(p => ({
-                    'ID Client': p.id_client,
-                    'Contact': p.contact,
-                    'Gérant': p.gerant,
-                    'Email': p.email,
-                    'Statut': p.present ? 'Présent' : 'Absent',
-                    'Date de présence': p.datePresence ? new Date(p.datePresence).toLocaleString('fr-FR') : '',
-                    'Mode de validation': p.modeValidation || '',
-                    'Source': p.source
-                })));
+const ws = XLSX.utils.json_to_sheet(dataToExport.map(p => ({
+    "ID d'inscription": p.id_client,
+    'Contact': p.contact,
+    'Gérant': p.gerant,
+    'Email': p.email,
+    'Statut': p.present ? 'Présent' : 'Absent',
+    'Date de présence': p.datePresence ? new Date(p.datePresence).toLocaleString('fr-FR') : '',
+    'Mode de validation': p.modeValidation || '',
+    'Source': p.source
+})));
 
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Participants');
@@ -717,77 +717,58 @@
                                 </select>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {filteredParticipants.map(p => (
-                                    <div key={p.id_client} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-blue-300 transition">
-                                        <div className="mb-3">
-                                            <h4 className="font-bold text-gray-900 text-lg mb-2">
-                                                {p.contact}
-                                            </h4>
-                                            {p.gerant && (
-                                                <p className="text-sm text-gray-700 mb-1 flex items-center gap-1">
-                                                    <span className="font-medium">👤 Gérant:</span> {p.gerant}
-                                                </p>
-                                            )}
-                                            {p.email && (
-                                                <p className="text-sm text-gray-700 mb-1 flex items-center gap-1">
-                                                    <span className="font-medium">✉️ Email:</span> {p.email}
-                                                </p>
-                                            )}
-                                            <p className="text-xs text-gray-400 mt-2 font-mono">
-                                                ID: {p.id_client}
-                                            </p>
-                                        </div>
-                                        
-                                        <div className="mb-3 pt-3 border-t border-gray-200">
-                                            {p.present ? (
-                                                <div>
-                                                    <span className="inline-block px-3 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
-                                                        ✓ Présent
-                                                    </span>
-                                                    <div className="text-xs text-gray-500 mt-2">
-                                                        📅 {new Date(p.datePresence).toLocaleString('fr-FR')}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500">
-                                                        🔖 {p.modeValidation}
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <span className="inline-block px-3 py-1 text-xs font-semibold text-gray-600 bg-gray-100 rounded-full">
-                                                    Absent
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        <div className="flex gap-2">
-                                            {p.present ? (
-                                                <button
-                                                    onClick={() => cancelPresence(p.id_client)}
-                                                    className="flex-1 px-3 py-2 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition font-medium"
-                                                >
-                                                    Annuler émargement
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={() => markPresent(p.id_client)}
-                                                    className="flex-1 px-3 py-2 text-sm text-white bg-green-600 hover:bg-green-700 rounded-lg transition font-medium"
-                                                >
-                                                    Marquer présent
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {filteredParticipants.length === 0 && (
-                                <div className="text-center py-12 text-gray-500">
-                                    Aucun participant trouvé
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+     <div className="overflow-x-auto">
+    <table className="min-w-full text-sm">
+        <thead className="bg-gray-100">
+            <tr>
+                <th className="px-4 py-2 text-left font-medium text-gray-700">Contact</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-700">Gérant</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-700">Email</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-700">ID d'inscription</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-700">Statut</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-700">Action</th>
+            </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+            {filteredParticipants.map(p => (
+                <tr key={p.id_client} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 font-medium text-gray-900">{p.contact}</td>
+                    <td className="px-4 py-2 text-gray-700">{p.gerant}</td>
+                    <td className="px-4 py-2 text-gray-700">{p.email}</td>
+                    <td className="px-4 py-2 text-xs text-gray-500 font-mono">{p.id_client}</td>
+                    <td className="px-4 py-2">
+                        {p.present ? (
+                            <span className="inline-block px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
+                                Présent
+                            </span>
+                        ) : (
+                            <span className="inline-block px-2 py-1 text-xs font-semibold text-gray-700 bg-gray-100 rounded-full">
+                                Absent
+                            </span>
+                        )}
+                    </td>
+                    <td className="px-4 py-2">
+                        {p.present ? (
+                            <button
+                                onClick={() => cancelPresence(p.id_client)}
+                                className="px-3 py-1 text-xs text-white bg-red-600 hover:bg-red-700 rounded-lg"
+                            >
+                                Annuler
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => markPresent(p.id_client)}
+                                className="px-3 py-1 text-xs text-white bg-green-600 hover:bg-green-700 rounded-lg"
+                            >
+                                Marquer présent
+                            </button>
+                        )}
+                    </td>
+                </tr>
+            ))}
+        </tbody>
+    </table>
+</div>
             );
         }
 

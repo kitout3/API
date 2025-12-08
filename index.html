@@ -1201,16 +1201,22 @@
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                         const rows = XLSX.utils.sheet_to_json(firstSheet);
 
-                        const imported = rows.map(row => ({
-                            id_client: row.id_client || row.ID || row['ID client'] || row['id client'] || `GEN_${Date.now()}_${Math.random()}`,
-                            nom: row.nom || row.Nom || row.nom || '',
-                            prenom: row.prenom || row.Prénom || row.prenom || '',
-                            email: row.email || row.Email || row['Adresse email'] || '',
-                            source: 'import',
-                            present: false,
-                            datePresence: null,
-                            modeValidation: null
-                        }));
+const imported = rows.map((row, index) => ({
+    id_client: row["ID d'inscription"] 
+            || row.id_client 
+            || row.ID 
+            || row['ID client'] 
+            || row['id client'] 
+            || `GEN_${Date.now()}_${index}`,
+    nom: row.nom || row.Nom || row.NOM || '',
+    prenom: row.prenom || row.Prénom || row.PRENOM || '',
+    email: row.email || row.Email || row['Adresse email'] || row['Adresse email (Contact) (Relation)'] || '',
+    gerant: row.gerant || row.Gérant || row['Gérant (Contact) (Relation)'] || '',
+    source: 'import',
+    present: false,
+    datePresence: null,
+    modeValidation: null
+}));
 
                         const uniqueParticipants = imported.filter((p, index, self) =>
                             index === self.findIndex(t => t.id_client === p.id_client)
@@ -1705,7 +1711,10 @@
 
             const handleScan = (idClient) => {
                 const participants = Storage.getParticipants(event.id);
-                const participant = participants.find(p => p.id_client === idClient);
+                const participant = participants.find(
+                p => p.id_client && p.id_client.toString().trim() === idClient.toString().trim()
+);
+
 
                 if (!participant) {
                     setMessage(`❌ ID ${idClient} non trouvé`);
